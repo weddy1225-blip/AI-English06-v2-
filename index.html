@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音軌整理師</title>
+    <style>
+        :root {
+            --primary: #FF85A1; --secondary: #4CC9F0; --accent: #FFD166;
+            --success: #70E000; --fail: #FF4B4B; --bg: #F0F9FF; --text: #505050;
+        }
+        body { font-family: 'Comic Sans MS', "Microsoft JhengHei", cursive, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+        .game-window { background: white; width: 95%; max-width: 900px; min-height: 650px; border-radius: 30px; box-shadow: 0 15px 0 #D0E1F9; border: 4px solid #BBD6FD; padding: 30px; position: relative; display: flex; flex-direction: column; }
+        #game-screen, #result-screen { display: none; }
+        .progress-bar { width: 100%; height: 18px; background: #EEE; border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+        .progress-fill { width: 0%; height: 100%; background: var(--secondary); transition: width 0.5s; }
+        .drop-zone { background: #F8FBFF; border: 3px dashed #BBD6FD; border-radius: 20px; min-height: 120px; margin: 15px 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; padding: 20px; font-size: 32px; font-weight: bold; position: relative; }
+        .cloze-text { font-size: clamp(20px, 4vw, 32px); color: #333; margin: 0 5px; }
+        .cloze-blank { border-bottom: 4px solid #555; min-width: 140px; display: inline-flex; justify-content: center; height: 65px; align-items: center; vertical-align: middle; }
+        .word-pool { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 15px; background: #FFF9E6; border-radius: 20px; min-height: 80px; }
+        .word-card { background: white; border: 2px solid #DDD; border-radius: 15px; padding: 10px 20px; font-size: 20px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 0 #EEE; transition: 0.2s; user-select: none; }
+        .word-card:active { transform: translateY(3px); box-shadow: 0 2px 0 #EEE; }
+        .btn-audio { background: var(--secondary); border: none; color: white; width: 60px; height: 60px; border-radius: 50%; font-size: 28px; cursor: pointer; box-shadow: 0 5px 0 #1598D0; margin-bottom: 5px; }
+        .btn-large { background: var(--primary); color: white; border: none; padding: 15px 40px; border-radius: 50px; cursor: pointer; box-shadow: 0 6px 0 #D65A77; font-size: 22px; font-weight: bold; }
+        #hint-text { text-align: center; color: #888; font-style: italic; margin-bottom: 10px; min-height: 24px; visibility: hidden; }
+        .feedback-msg { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 50px; font-weight: bold; z-index: 100; pointer-events: none; display: none; text-shadow: 2px 2px 10px rgba(0,0,0,0.1); white-space: nowrap; }
+        .report-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        .report-table th { background: #F8FBFF; padding: 10px; border-bottom: 2px solid #EEE; text-align: left; }
+        .report-table td { padding: 10px; border-bottom: 1px solid #EEE; line-height: 1.4; }
+        .text-err { color: var(--fail); font-weight: bold; text-decoration: line-through; }
+        .text-correct { color: var(--success); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="game-window">
+    <div id="feedback" class="feedback-msg"></div>
+
+    <div id="start-screen" style="text-align: center;">
+        <div style="font-size: 70px;">🎧</div>
+        <h1 style="color:var(--primary); font-size: 42px; margin-bottom: 10px;">音軌整理師</h1>
+        <div style="background: #F8FBFF; padding: 25px; border-radius: 20px; border: 2px solid #E0EEFF; display: inline-block; max-width: 80%;">
+            <p style="font-size: 20px; line-height: 1.8; color: #555; margin: 0;">
+                實習生不小心把音軌弄亂了！<br>
+                你是<b>專業的音軌修復師</b>，<br>
+                請協助實習生把音軌重新整理好吧。
+            </p>
+        </div>
+        <br>
+        <button class="btn-large" style="margin-top: 30px;" onclick="startGame()">開始整理音軌</button>
+    </div>
+
+    <div id="game-screen">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <div style="text-align: center;"><button class="btn-audio" onclick="playAudio()">🔊</button></div>
+        <div id="hint-text"></div>
+        <div id="drop-zone" class="drop-zone" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+        <div id="word-pool" class="word-pool" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+        <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+            <button onclick="showHint()" style="background:var(--accent); border:none; padding:10px 25px; border-radius:15px; cursor:pointer; font-weight:bold;">💡 查看翻譯</button>
+            <button class="btn-large" id="submit-btn" onclick="handleSubmit()">提交修復</button>
+        </div>
+    </div>
+
+    <div id="result-screen">
+        <h2 style="text-align: center; color: var(--secondary); margin-bottom: 5px;">📋 音軌修復報告</h2>
+        <div style="overflow-y: auto; max-height: 380px; background: #fff; padding: 10px; border-radius: 20px; border: 2px solid #F0F0F0;">
+            <table class="report-table" id="report-table">
+                <thead>
+                    <tr><th style="width: 30px;">#</th><th style="width: 60px;">狀態</th><th>修復紀錄</th><th>正確音軌</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button class="btn-large" onclick="location.reload()">修復新音軌</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 總共 110 題 (60 重組 + 50 辨音挖空)
+    const library = {
+        重組題: [
+            {en: "Today is Monday.", zh: "今天星期一。"}, {en: "The kitchen is clean.", zh: "廚房很乾淨。"},
+            {en: "Go straight and turn left.", zh: "直走然後左轉。"}, {en: "Sunday is a holiday.", zh: "週日是假日。"},
+            {en: "I sleep in my bedroom.", zh: "我在臥室睡覺。"}, {en: "The cat is behind the door.", zh: "貓在門後面。"},
+            {en: "May is a warm month.", zh: "五月是一個溫暖的月份。"}, {en: "Where is the bathroom?", zh: "浴室在哪裡？"},
+            {en: "It is sunny in July.", zh: "七月的天氣很晴朗。"}, {en: "Put the milk in the fridge.", zh: "把牛奶放進冰箱。"},
+            {en: "The library is next to the park.", zh: "圖書館在公園旁邊。"}, {en: "We have dinner at six.", zh: "我們六點吃晚餐。"},
+            {en: "Brush your teeth every day.", zh: "每天都要刷牙。"}, {en: "The sun is hot today.", zh: "今天的太陽很熱。"},
+            {en: "Birds can fly in the sky.", zh: "鳥兒可以在天空飛。"}, {en: "My mother is a teacher.", zh: "我的媽媽是一位老師。"},
+            {en: "He is playing the piano.", zh: "他正在彈鋼琴。"}, {en: "Open the window, please.", zh: "請打開窗戶。"},
+            {en: "I want to eat an apple.", zh: "我想吃一顆蘋果。"}, {en: "Wash your hands before dinner.", zh: "飯前要洗手。"},
+            {en: "This is a beautiful flower.", zh: "這是一朵漂亮的花。"}, {en: "Can you help me now?", zh: "你現在可以幫我嗎？"},
+            {en: "They are dancing in the room.", zh: "他們正在房間裡跳舞。"}, {en: "I like to read books.", zh: "我喜歡讀書。"},
+            {en: "The car is very fast.", zh: "這輛車很快。"}, {en: "She wears a red dress.", zh: "她穿著一件紅洋裝。"},
+            {en: "Listen to the music please.", zh: "請聽音樂。"}, {en: "We go to school together.", zh: "我們一起去上學。"},
+            {en: "There is a big tree.", zh: "那裡有一棵大樹。"}, {en: "How are you doing today?", zh: "你今天好嗎？"},
+            {en: "I am thirsty and tired.", zh: "我又渴又累。"}, {en: "Look at the white clouds.", zh: "看那些白雲。"},
+            {en: "The baby is sleeping now.", zh: "寶寶正在睡覺。"}, {en: "My father drives a taxi.", zh: "我的父親開計程車。"},
+            {en: "Summer is a hot season.", zh: "夏天是個炎熱的季節。"}, {en: "Give me the blue pen.", zh: "給我那枝藍色的筆。"},
+            {en: "Do you like orange juice?", zh: "你喜歡柳橙汁嗎？"}, {en: "The dog is under the table.", zh: "狗在桌子下面。"},
+            {en: "He lives in a big city.", zh: "他住在一個大城市。"}, {en: "What time is it now?", zh: "現在幾點了？"},
+            {en: "I have a small brother.", zh: "我有一個小弟弟。"}, {en: "The bus is coming soon.", zh: "公車快來了。"},
+            {en: "Don't run in the classroom.", zh: "不要在教室裡奔跑。"}, {en: "The moon is bright tonight.", zh: "今晚月色很亮。"},
+            {en: "I can see the mountains.", zh: "我可以看到山。"}, {en: "He works in a hospital.", zh: "他在醫院工作。"},
+            {en: "Please sit down and wait.", zh: "請坐下等候。"}, {en: "The soup is very yummy.", zh: "這湯很好喝。"},
+            {en: "We play soccer after school.", zh: "我們放學後踢足球。"}, {en: "I am wearing a hat.", zh: "我戴著帽子。"},
+            {en: "Turn off the light please.", zh: "請關燈。"}, {en: "She has long black hair.", zh: "她有黑長髮。"},
+            {en: "The elephant is very big.", zh: "大象非常大。"}, {en: "My bag is on the chair.", zh: "我的包包在椅子上。"},
+            {en: "I am happy to see you.", zh: "很高興見到你。"}, {en: "It is raining outside now.", zh: "外面正在下雨。"},
+            {en: "Put your shoes in the box.", zh: "把你的鞋子放進盒子裡。"}, {en: "The coffee is too hot.", zh: "咖啡太燙了。"},
+            {en: "They are eating pizza now.", zh: "他們正在吃披薩。"}, {en: "Good morning to everyone here.", zh: "大家早安。"}
+        ],
+        挖空題: [
+            {en: "The house is white.", zh: "這間房子是白色的。", target: "house", options: ["house", "horse"]},
+            {en: "Go to the park.", zh: "去公園。", target: "park.", options: ["park.", "bark."]},
+            {en: "The pan is hot.", zh: "平底鍋很燙。", target: "pan", options: ["pan", "pen"]},
+            {en: "Sit on the seat.", zh: "坐在座位上。", target: "seat.", options: ["seat.", "sit."]},
+            {en: "Look at the sheep.", zh: "看那隻綿羊。", target: "sheep.", options: ["sheep.", "ship."]},
+            {en: "The snake is long.", zh: "蛇很長。", target: "snake.", options: ["snake.", "snack."]},
+            {en: "The lake is beautiful.", zh: "這座湖很漂亮。", target: "lake.", options: ["lake.", "cake."]},
+            {en: "The sky is blue.", zh: "天空是藍色的。", target: "sky.", options: ["sky.", "ski."]},
+            {en: "Eat your rice.", zh: "吃你的飯。", target: "rice.", options: ["rice.", "mice."]},
+            {en: "Don't break the glass.", zh: "別打破玻璃。", target: "glass.", options: ["glass.", "grass."]},
+            {en: "The boy is tall.", zh: "這個男孩很高。", target: "boy.", options: ["boy.", "toy."]},
+            {en: "Drink some milk.", zh: "喝點牛奶。", target: "milk.", options: ["milk.", "silk."]},
+            {en: "See the green leaf.", zh: "看那片綠葉。", target: "leaf.", options: ["leaf.", "beef."]},
+            {en: "I love my bed.", zh: "我愛我的床。", target: "bed.", options: ["bed.", "bad."]},
+            {en: "Put on your cap.", zh: "戴上你的帽子。", target: "cap.", options: ["cap.", "cup."]},
+            {en: "The mouse is small.", zh: "老鼠很小。", target: "mouse.", options: ["mouse.", "mouth."]},
+            {en: "I feel very sick.", zh: "我覺得很不舒服。", target: "sick.", options: ["sick.", "six."]},
+            {en: "The whale is in the sea.", zh: "鯨魚在海裡。", target: "sea.", options: ["sea.", "see."]},
+            {en: "This is a thin book.", zh: "這是一本薄書。", target: "thin", options: ["thin", "fin"]},
+            {en: "Wash your face.", zh: "洗你的臉。", target: "face.", options: ["face.", "case."]},
+            {en: "Look at the clock.", zh: "看那個時鐘。", target: "clock.", options: ["clock.", "cloud."]},
+            {en: "The bag is heavy.", zh: "包包很重。", target: "heavy.", options: ["heavy.", "hobby."]},
+            {en: "I like to sing.", zh: "我喜歡唱歌。", target: "sing.", options: ["sing.", "sink."]},
+            {en: "The cat is on the mat.", zh: "貓在墊子上。", target: "mat.", options: ["mat.", "map."]},
+            {en: "He is a good fan.", zh: "他是個忠實粉絲。", target: "fan.", options: ["fan.", "fun."]},
+            {en: "The light is on.", zh: "燈亮著。", target: "light.", options: ["light.", "night."]},
+            {en: "I have a nice bike.", zh: "我有一輛不錯的腳踏車。", target: "bike.", options: ["bike.", "back."]},
+            {en: "The soap is smells good.", zh: "肥皂聞起來很香。", target: "soap", options: ["soap", "soup"]},
+            {en: "Let's play ball.", zh: "我們來玩球吧。", target: "ball.", options: ["ball.", "bell."]},
+            {en: "The shop is closed.", zh: "商店關門了。", target: "shop.", options: ["shop.", "ship."]},
+            {en: "I eat a pear.", zh: "我吃一顆梨子。", target: "pear.", options: ["pear.", "bear."]},
+            {en: "The sun is up.", zh: "太陽升起了。", target: "sun.", options: ["sun.", "son."]},
+            {en: "He has a lot of luck.", zh: "他運氣很好。", target: "luck.", options: ["luck.", "look."]},
+            {en: "The king is rich.", zh: "國王很富有。", target: "king.", options: ["king.", "ring."]},
+            {en: "This is my nose.", zh: "這是我的鼻子。", target: "nose.", options: ["nose.", "rose."]},
+            {en: "The boat is on the river.", zh: "小船在河上。", target: "boat.", options: ["boat.", "coat."]},
+            {en: "I need some tape.", zh: "我需要一些膠帶。", target: "tape.", options: ["tape.", "type."]},
+            {en: "The farm is big.", zh: "農場很大。", target: "farm.", options: ["farm.", "form."]},
+            {en: "She is my aunt.", zh: "她是我的阿姨。", target: "aunt.", options: ["aunt.", "ant."]},
+            {en: "Watch your step.", zh: "注意你的腳步。", target: "step.", options: ["step.", "stop."]},
+            {en: "The moon is round.", zh: "月亮是圓的。", target: "round.", options: ["round.", "sound."]},
+            {en: "I like pink color.", zh: "我喜歡粉紅色。", target: "pink.", options: ["pink.", "pig."]},
+            {en: "The pool is cool.", zh: "泳池很涼快。", target: "pool.", options: ["pool.", "pull."]},
+            {en: "He is very kind.", zh: "他很仁慈。", target: "kind.", options: ["kind.", "king."]},
+            {en: "It is a fast train.", zh: "這是輛快車。", target: "train.", options: ["train.", "rain."]},
+            {en: "The wood is dry.", zh: "木頭很乾。", target: "wood.", options: ["wood.", "food."]},
+            {en: "I feel a bit cold.", zh: "我覺得有點冷。", target: "cold.", options: ["cold.", "gold."]},
+            {en: "The meat is fresh.", zh: "肉很新鮮。", target: "meat.", options: ["meat.", "meet."]},
+            {en: "Open the gate.", zh: "打開大門。", target: "gate.", options: ["gate.", "game."]},
+            {en: "That is a long road.", zh: "那是條長路。", target: "road.", options: ["road.", "read."]}
+        ]
+    };
+
+    let gameData = [];
+    let currentIndex = 0;
+    let userResults = [];
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'block';
+        let t0 = library.重組題.sort(() => 0.5 - Math.random()).slice(0, 8);
+        let t1 = library.挖空題.sort(() => 0.5 - Math.random()).slice(0, 2);
+        gameData = [...t0, ...t1].sort(() => 0.5 - Math.random());
+        loadQuestion();
+    }
+
+    function loadQuestion() {
+        const item = gameData[currentIndex];
+        document.getElementById('progress-fill').style.width = (currentIndex / 10) * 100 + "%";
+        document.getElementById('hint-text').innerText = "💡 翻譯提示：" + item.zh;
+        document.getElementById('hint-text').style.visibility = "hidden";
+        const pool = document.getElementById('word-pool');
+        const zone = document.getElementById('drop-zone');
+        pool.innerHTML = ""; zone.innerHTML = "";
+        
+        if (!item.target) {
+            let words = item.en.split(' ').sort(() => 0.5 - Math.random());
+            words.forEach((w, i) => createCard(w, i, pool));
+        } else {
+            let parts = item.en.split(item.target);
+            zone.innerHTML = `<span class="cloze-text">${parts[0]||""}</span><div id="blank" class="cloze-blank" ondrop="drop(event)" ondragover="allowDrop(event)"></div><span class="cloze-text">${parts[1]||""}</span>`;
+            item.options.sort(() => 0.5 - Math.random()).forEach((opt, i) => createCard(opt, i, pool));
+        }
+        setTimeout(playAudio, 600);
+    }
+
+    function createCard(text, id, container) {
+        let card = document.createElement('div');
+        card.className = 'word-card'; card.innerText = text; card.id = "card-" + id;
+        card.draggable = true; card.onclick = () => moveToZone(card);
+        card.ondragstart = (e) => e.dataTransfer.setData("text", e.target.id);
+        container.appendChild(card);
+    }
+
+    function moveToZone(card) {
+        const blank = document.getElementById('blank');
+        const dropZone = document.getElementById('drop-zone');
+        const pool = document.getElementById('word-pool');
+        if (blank) {
+            if (card.parentNode === blank) pool.appendChild(card);
+            else { if (blank.children.length > 0) pool.appendChild(blank.children[0]); blank.appendChild(card); }
+        } else {
+            if (card.parentNode !== dropZone) dropZone.appendChild(card);
+            else pool.appendChild(card);
+        }
+    }
+
+    function allowDrop(ev) { ev.preventDefault(); }
+    function drop(ev) {
+        ev.preventDefault();
+        let card = document.getElementById(ev.dataTransfer.getData("text"));
+        let targetId = ev.currentTarget.id;
+        if (targetId === "blank") {
+            if (ev.currentTarget.children.length > 0) document.getElementById('word-pool').appendChild(ev.currentTarget.children[0]);
+            ev.currentTarget.appendChild(card);
+        } else { ev.currentTarget.appendChild(card); }
+    }
+
+    function playAudio() {
+        const utter = new SpeechSynthesisUtterance(gameData[currentIndex].en);
+        utter.lang = 'en-US'; utter.rate = 0.8; window.speechSynthesis.speak(utter);
+    }
+
+    function showHint() { document.getElementById('hint-text').style.visibility = "visible"; }
+
+    function handleSubmit() {
+        const item = gameData[currentIndex];
+        const blank = document.getElementById('blank');
+        const dropZone = document.getElementById('drop-zone');
+        let userStr = ""; let isCorrect = false;
+        
+        if (blank) {
+            let blankWord = blank.innerText.trim(); userStr = blankWord || "(未填寫)";
+            isCorrect = (blankWord === item.target);
+        } else {
+            userStr = Array.from(dropZone.children).map(c => c.innerText).join(' ');
+            isCorrect = (userStr === item.en);
+        }
+        
+        userResults.push({ q: item.en, user: userStr, correct: isCorrect });
+        const fb = document.getElementById('feedback');
+        
+        // 修改此處回饋文字
+        fb.innerText = isCorrect ? "✨ 整理完成！" : "⚡ 整理失敗";
+        fb.style.color = isCorrect ? "#70E000" : "#FF4B4B";
+        fb.style.display = "block";
+        
+        setTimeout(() => {
+            fb.style.display = "none"; currentIndex++;
+            currentIndex < 10 ? loadQuestion() : showFinal();
+        }, 1200);
+    }
+
+    function showFinal() {
+        document.getElementById('game-screen').style.display = 'none';
+        document.getElementById('result-screen').style.display = 'block';
+        const tbody = document.querySelector('#report-table tbody');
+        tbody.innerHTML = "";
+        userResults.forEach((res, i) => {
+            let userDisplay = res.correct ? `<span class="text-correct">${res.user}</span>` : `<span class="text-err">${res.user}</span>`;
+            tbody.innerHTML += `<tr><td>${i+1}</td><td>${res.correct ? '✅' : '❌'}</td><td>${userDisplay}</td><td>${res.q}</td></tr>`;
+        });
+    }
+</script>
+</body>
+</html>
